@@ -17,7 +17,7 @@ const keepAliveAgent = new https.Agent({
 /* ─── Configuration ──────────────────────────────────────────── */
 const GOFILE_CONTENT_ID = 'a9V5tH';              // The default content hash from the URL
 const API_SERVER       = 'api.gofile.io';
-const PORT             = 3001;
+const PORT             = process.env.PORT || 3001;
 const DB_FILE          = path.join(__dirname, 'db.json');
 const THUMBNAIL_DIR    = path.join(__dirname, 'thumbnails');
 const CONFIG_FILE      = path.join(__dirname, 'config.json');
