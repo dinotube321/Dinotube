@@ -3,6 +3,7 @@ const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { MongoClient } = require('mongodb');
 
 /* ─── Keep-Alive HTTPS Agent for Performance ─────────────────── */
 const keepAliveAgent = new https.Agent({
@@ -49,6 +50,24 @@ function verifyAdminPassword(password) {
 // Enforce thumbnail directory initialization
 if (!fs.existsSync(THUMBNAIL_DIR)) {
   fs.mkdirSync(THUMBNAIL_DIR);
+}
+
+/* ─── MongoDB Connection Configuration ────────────────────────── */
+const mongoUri = process.env.MONGODB_URI;
+let mongoClient = null;
+let mongoDb = null;
+
+if (mongoUri) {
+  console.log('🔌 Connecting to MongoDB Atlas…');
+  MongoClient.connect(mongoUri)
+    .then(client => {
+      mongoClient = client;
+      mongoDb = client.db('dinotube');
+      console.log('✅ Connected to MongoDB successfully!');
+    })
+    .catch(err => {
+      console.error('❌ Failed to connect to MongoDB:', err.message);
+    });
 }
 
 /* ─── Database Helpers ────────────────────────────────────────── */
@@ -465,6 +484,33 @@ function parseJSONBody(req) {
   });
 }
 
+/* ─── Unified Data Controller ─────────────────────────────────── */
+async function getVideos(sort = 'top') {
+  if (mongoDb) {
+    try {
+      const cursor = mongoDb.collection('videos').find({}, { projection: { thumbnailBase64: 0 } });
+      const videos = await cursor.toArray();
+      const mapped = videos.map(v => ({ ...v, id: v._id }));
+      if (sort === 'top') {
+        mapped.sort((a, b) => b.views - a.views);
+      } else {
+        mapped.sort((a, b) => b.createdAt - a.createdAt);
+      }
+      return mapped;
+    } catch (err) {
+      console.error('Error fetching videos from MongoDB:', err.message);
+    }
+  }
+  // Fallback to local file db
+  const videos = loadDB();
+  if (sort === 'top') {
+    videos.sort((a, b) => b.views - a.views);
+  } else {
+    videos.sort((a, b) => b.createdAt - a.createdAt);
+  }
+  return videos;
+}
+
 /* ─── HTTP Server ─────────────────────────────────────────────── */
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -476,12 +522,29 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // ─── API: Serve Local Thumbnail Images ───
+  // ─── API: Serve Thumbnail Images (Tries DB first, then local filesystem) ───
   if (req.url.startsWith('/thumbnails/')) {
     const cleanPath = req.url.split('?')[0];
     const fileName = path.basename(cleanPath);
-    const filePath = path.join(THUMBNAIL_DIR, fileName);
+    const id = fileName.replace('.jpg', '');
     
+    if (mongoDb) {
+      try {
+        const video = await mongoDb.collection('videos').findOne({ _id: id });
+        if (video && video.thumbnailBase64) {
+          const base64Data = video.thumbnailBase64.replace(/^data:image\/\w+;base64,/, '');
+          const buffer = Buffer.from(base64Data, 'base64');
+          res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
+          res.end(buffer);
+          return;
+        }
+      } catch (err) {
+        console.error('Error serving thumbnail from MongoDB:', err.message);
+      }
+    }
+    
+    // File fallback
+    const filePath = path.join(THUMBNAIL_DIR, fileName);
     if (fs.existsSync(filePath)) {
       res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
       fs.createReadStream(filePath).pipe(res);
@@ -496,14 +559,9 @@ const server = http.createServer(async (req, res) => {
   if ((req.url === '/api/videos' || req.url.startsWith('/api/videos?')) && req.method === 'GET') {
     const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
     const sort = urlParams.get('sort') || 'top';
-    const videos = loadDB();
-    if (sort === 'top') {
-      videos.sort((a, b) => b.views - a.views);
-    } else {
-      videos.sort((a, b) => b.createdAt - a.createdAt);
-    }
+    const videosList = await getVideos(sort);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(videos));
+    return res.end(JSON.stringify(videosList));
   }
 
   // ─── API: Admin Password Probe/Login (Dedicated Fast Endpoint) ───
@@ -546,30 +604,56 @@ const server = http.createServer(async (req, res) => {
       }
       
       const sess = getOrCreateSession(contentId);
-      const videos = loadDB();
-      const existingIdx = videos.findIndex(v => v.id === contentId);
-      
       let targetVideo;
-      if (existingIdx !== -1) {
-        if (body.title) videos[existingIdx].title = body.title;
-        if (body.description) videos[existingIdx].description = body.description;
-        targetVideo = videos[existingIdx];
+      
+      if (mongoDb) {
+        // MongoDB Upsert
+        await mongoDb.collection('videos').updateOne(
+          { _id: contentId },
+          {
+            $setOnInsert: {
+              title: body.title || sess.fileName || 'GoFile Video',
+              description: body.description || 'No description provided.',
+              views: 0,
+              rating: 0,
+              ratingCount: 0,
+              ratingSum: 0,
+              reports: 0,
+              duration: 0,
+              createdAt: Date.now()
+            }
+          },
+          { upsert: true }
+        );
+        const doc = await mongoDb.collection('videos').findOne({ _id: contentId });
+        targetVideo = { ...doc, id: doc._id };
       } else {
-        targetVideo = {
-          id: contentId,
-          title: body.title || sess.fileName || 'GoFile Video',
-          description: body.description || 'No description provided.',
-          views: 0,
-          rating: 0,
-          ratingCount: 0,
-          ratingSum: 0,
-          reports: 0,
-          duration: 0,
-          createdAt: Date.now()
-        };
-        videos.push(targetVideo);
+        // File fallback
+        const videos = loadDB();
+        const existingIdx = videos.findIndex(v => v.id === contentId);
+        
+        if (existingIdx !== -1) {
+          if (body.title) videos[existingIdx].title = body.title;
+          if (body.description) videos[existingIdx].description = body.description;
+          targetVideo = videos[existingIdx];
+        } else {
+          targetVideo = {
+            id: contentId,
+            title: body.title || sess.fileName || 'GoFile Video',
+            description: body.description || 'No description provided.',
+            views: 0,
+            rating: 0,
+            ratingCount: 0,
+            ratingSum: 0,
+            reports: 0,
+            duration: 0,
+            createdAt: Date.now()
+          };
+          videos.push(targetVideo);
+        }
+        saveDB(videos);
       }
-      saveDB(videos);
+      
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ status: 'ok', data: targetVideo }));
     } catch (err) {
@@ -595,29 +679,50 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Missing video ID' }));
       }
       
-      const videos = loadDB();
-      const idx = videos.findIndex(v => v.id === id);
+      let updatedVideo;
       
-      if (idx === -1) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Video not found' }));
-      }
-      
-      if (title !== undefined) videos[idx].title = title;
-      if (description !== undefined) videos[idx].description = description;
-      saveDB(videos);
-      
-      // Save custom thumbnail base64 image if uploaded
-      if (thumbnail) {
-        const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, '');
-        const buffer = Buffer.from(base64Data, 'base64');
-        const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
-        fs.writeFileSync(thumbPath, buffer);
-        console.log(`[thumbnail] Custom thumbnail uploaded for video ${id}`);
+      if (mongoDb) {
+        const updateDoc = {};
+        if (title !== undefined) updateDoc.title = title;
+        if (description !== undefined) updateDoc.description = description;
+        if (thumbnail) updateDoc.thumbnailBase64 = thumbnail;
+        
+        const result = await mongoDb.collection('videos').findOneAndUpdate(
+          { _id: id },
+          { $set: updateDoc },
+          { returnDocument: 'after' }
+        );
+        if (!result) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Video not found' }));
+        }
+        updatedVideo = { ...result, id: result._id };
+        console.log(`[admin] Updated video ${id} on MongoDB`);
+      } else {
+        const videos = loadDB();
+        const idx = videos.findIndex(v => v.id === id);
+        
+        if (idx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Video not found' }));
+        }
+        
+        if (title !== undefined) videos[idx].title = title;
+        if (description !== undefined) videos[idx].description = description;
+        saveDB(videos);
+        updatedVideo = videos[idx];
+        
+        if (thumbnail) {
+          const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, '');
+          const buffer = Buffer.from(base64Data, 'base64');
+          const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+          fs.writeFileSync(thumbPath, buffer);
+          console.log(`[thumbnail] Custom thumbnail uploaded for video ${id}`);
+        }
       }
       
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ status: 'ok', data: videos[idx] }));
+      return res.end(JSON.stringify({ status: 'ok', data: updatedVideo }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: err.message }));
@@ -636,12 +741,20 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Invalid ID or duration' }));
       }
       
-      const videos = loadDB();
-      const idx = videos.findIndex(v => v.id === id);
-      if (idx !== -1) {
-        videos[idx].duration = val;
-        saveDB(videos);
-        console.log(`[duration] Updated duration for video ${id} to ${val}s`);
+      if (mongoDb) {
+        await mongoDb.collection('videos').updateOne(
+          { _id: id },
+          { $set: { duration: val } }
+        );
+        console.log(`[duration] Updated duration for video ${id} to ${val}s in MongoDB`);
+      } else {
+        const videos = loadDB();
+        const idx = videos.findIndex(v => v.id === id);
+        if (idx !== -1) {
+          videos[idx].duration = val;
+          saveDB(videos);
+          console.log(`[duration] Updated duration for video ${id} to ${val}s`);
+        }
       }
       
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -666,33 +779,51 @@ const server = http.createServer(async (req, res) => {
       
       const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
       const ratingKey = `${clientIp}_${id}`;
-      
-      const ratings = loadRatings();
-      ratings[ratingKey] = val;
-      saveRatings(ratings);
-      
-      const videoRatings = Object.entries(ratings)
-        .filter(([key]) => key.endsWith(`_${id}`))
-        .map(([key, score]) => score);
-      
-      const ratingCount = videoRatings.length;
-      const ratingSum = videoRatings.reduce((sum, score) => sum + score, 0);
-      const avgRating = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
-      
-      const videos = loadDB();
-      const idx = videos.findIndex(v => v.id === id);
-      
-      if (idx === -1) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Video not found' }));
+      let avgRating = 0;
+      let ratingCount = 0;
+
+      if (mongoDb) {
+        await mongoDb.collection('ratings').updateOne(
+          { _id: ratingKey },
+          { $set: { score: val, videoId: id } },
+          { upsert: true }
+        );
+        
+        const ratingDocs = await mongoDb.collection('ratings').find({ videoId: id }).toArray();
+        ratingCount = ratingDocs.length;
+        const ratingSum = ratingDocs.reduce((sum, r) => sum + r.score, 0);
+        avgRating = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
+        
+        await mongoDb.collection('videos').updateOne(
+          { _id: id },
+          { $set: { ratingCount, ratingSum, rating: avgRating } }
+        );
+        console.log(`[ratings-db] Video ${id} average calculated to ${avgRating} (${ratingCount} reviews)`);
+      } else {
+        const ratings = loadRatings();
+        ratings[ratingKey] = val;
+        saveRatings(ratings);
+        
+        const videoRatings = Object.entries(ratings)
+          .filter(([key]) => key.endsWith(`_${id}`))
+          .map(([key, score]) => score);
+        
+        ratingCount = videoRatings.length;
+        const ratingSum = videoRatings.reduce((sum, score) => sum + score, 0);
+        avgRating = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
+        
+        const videos = loadDB();
+        const idx = videos.findIndex(v => v.id === id);
+        if (idx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Video not found' }));
+        }
+        
+        videos[idx].ratingCount = ratingCount;
+        videos[idx].ratingSum = ratingSum;
+        videos[idx].rating = avgRating;
+        saveDB(videos);
       }
-      
-      videos[idx].ratingCount = ratingCount;
-      videos[idx].ratingSum = ratingSum;
-      videos[idx].rating = avgRating;
-      saveDB(videos);
-      
-      console.log(`[ratings] IP ${clientIp} rated video ${id} with score ${val}. Aggregate average: ${avgRating}`);
       
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ status: 'ok', rating: avgRating, ratingCount: ratingCount }));
@@ -713,20 +844,35 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Missing video ID' }));
       }
       
-      const videos = loadDB();
-      const idx = videos.findIndex(v => v.id === id);
+      let updatedReports = 0;
       
-      if (idx === -1) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Video not found' }));
+      if (mongoDb) {
+        const result = await mongoDb.collection('videos').findOneAndUpdate(
+          { _id: id },
+          { $inc: { reports: 1 } },
+          { returnDocument: 'after' }
+        );
+        if (!result) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Video not found' }));
+        }
+        updatedReports = result.reports || 0;
+      } else {
+        const videos = loadDB();
+        const idx = videos.findIndex(v => v.id === id);
+        
+        if (idx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Video not found' }));
+        }
+        
+        videos[idx].reports = (videos[idx].reports || 0) + 1;
+        saveDB(videos);
+        updatedReports = videos[idx].reports;
       }
       
-      videos[idx].reports = (videos[idx].reports || 0) + 1;
-      saveDB(videos);
-      console.log(`[reports] Video ${id} reported as not working. Reports count: ${videos[idx].reports}`);
-      
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ status: 'ok', reports: videos[idx].reports }));
+      return res.end(JSON.stringify({ status: 'ok', reports: updatedReports }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: err.message }));
@@ -750,17 +896,23 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Missing video ID' }));
       }
       
-      const videos = loadDB();
-      const idx = videos.findIndex(v => v.id === id);
-      
-      if (idx === -1) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Video not found' }));
+      if (mongoDb) {
+        await mongoDb.collection('videos').updateOne(
+          { _id: id },
+          { $set: { reports: 0 } }
+        );
+      } else {
+        const videos = loadDB();
+        const idx = videos.findIndex(v => v.id === id);
+        
+        if (idx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Video not found' }));
+        }
+        
+        videos[idx].reports = 0;
+        saveDB(videos);
       }
-      
-      videos[idx].reports = 0;
-      saveDB(videos);
-      console.log(`[reports] Admin cleared reports for video ${id}`);
       
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ status: 'ok' }));
@@ -787,36 +939,41 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Missing video ID' }));
       }
       
-      const videos = loadDB();
-      const filtered = videos.filter(v => v.id !== id);
-      
-      if (videos.length === filtered.length) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Video not found' }));
-      }
-      
-      saveDB(filtered);
-      
-      // Delete associated thumbnail image file
-      const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
-      if (fs.existsSync(thumbPath)) {
-        try { fs.unlinkSync(thumbPath); } catch {}
-      }
-      
-      // Clean up user rating votes for this video
-      const ratings = loadRatings();
-      let ratingsChanged = false;
-      for (const ratingKey of Object.keys(ratings)) {
-        if (ratingKey.endsWith(`_${id}`)) {
-          delete ratings[ratingKey];
-          ratingsChanged = true;
+      if (mongoDb) {
+        await mongoDb.collection('videos').deleteOne({ _id: id });
+        await mongoDb.collection('ratings').deleteMany({ videoId: id });
+      } else {
+        const videos = loadDB();
+        const filtered = videos.filter(v => v.id !== id);
+        
+        if (videos.length === filtered.length) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Video not found' }));
+        }
+        
+        saveDB(filtered);
+        
+        // Delete associated thumbnail file
+        const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+        if (fs.existsSync(thumbPath)) {
+          try { fs.unlinkSync(thumbPath); } catch {}
+        }
+        
+        // Clean up ratings
+        const ratings = loadRatings();
+        let ratingsChanged = false;
+        for (const ratingKey of Object.keys(ratings)) {
+          if (ratingKey.endsWith(`_${id}`)) {
+            delete ratings[ratingKey];
+            ratingsChanged = true;
+          }
+        }
+        if (ratingsChanged) {
+          saveRatings(ratings);
         }
       }
-      if (ratingsChanged) {
-        saveRatings(ratings);
-      }
       
-      // Remove local session cache
+      // Remove session cache
       delete sessions[id];
       console.log(`[admin] Video ${id} removed successfully`);
       
@@ -847,21 +1004,26 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Missing video ID or image data' }));
       }
       
-      const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      
-      const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
-      fs.writeFileSync(thumbPath, buffer);
-      console.log(`[thumbnail] Saved thumbnail for video ${id}`);
-      
-      // If duration is provided, update it in metadata database
-      if (!isNaN(duration) && duration > 0) {
-        const videos = loadDB();
-        const idx = videos.findIndex(v => v.id === id);
-        if (idx !== -1) {
-          videos[idx].duration = duration;
-          saveDB(videos);
-          console.log(`[duration] Updated duration via thumbnail upload to ${duration}s`);
+      if (mongoDb) {
+        const setFields = { thumbnailBase64: image };
+        if (!isNaN(duration) && duration > 0) setFields.duration = duration;
+        await mongoDb.collection('videos').updateOne(
+          { _id: id },
+          { $set: setFields }
+        );
+      } else {
+        const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+        fs.writeFileSync(thumbPath, buffer);
+        
+        if (!isNaN(duration) && duration > 0) {
+          const videos = loadDB();
+          const idx = videos.findIndex(v => v.id === id);
+          if (idx !== -1) {
+            videos[idx].duration = duration;
+            saveDB(videos);
+          }
         }
       }
       
@@ -886,27 +1048,37 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Missing video ID or image data' }));
       }
       
-      const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
-      
-      // Strict protection: do not overwrite existing thumbnails
-      if (fs.existsSync(thumbPath)) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ status: 'exists', message: 'Thumbnail already exists' }));
-      }
-      
-      const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
-      fs.writeFileSync(thumbPath, buffer);
-      console.log(`[auto-thumbnail] Auto-saved thumbnail for video ${id}`);
-      
-      // Update duration in metadata database
-      if (!isNaN(duration) && duration > 0) {
-        const videos = loadDB();
-        const idx = videos.findIndex(v => v.id === id);
-        if (idx !== -1) {
-          videos[idx].duration = duration;
-          saveDB(videos);
-          console.log(`[duration] Updated duration via auto-thumbnail to ${duration}s`);
+      if (mongoDb) {
+        const doc = await mongoDb.collection('videos').findOne({ _id: id });
+        if (doc && doc.thumbnailBase64) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'exists', message: 'Thumbnail already exists' }));
+        }
+        
+        const setFields = { thumbnailBase64: image };
+        if (!isNaN(duration) && duration > 0) setFields.duration = duration;
+        await mongoDb.collection('videos').updateOne(
+          { _id: id },
+          { $set: setFields }
+        );
+      } else {
+        const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+        if (fs.existsSync(thumbPath)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'exists', message: 'Thumbnail already exists' }));
+        }
+        
+        const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(thumbPath, buffer);
+        
+        if (!isNaN(duration) && duration > 0) {
+          const videos = loadDB();
+          const idx = videos.findIndex(v => v.id === id);
+          if (idx !== -1) {
+            videos[idx].duration = duration;
+            saveDB(videos);
+          }
         }
       }
       
@@ -926,23 +1098,39 @@ const server = http.createServer(async (req, res) => {
       const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
       const viewKey = `${clientIp}_${id}`;
       const now = Date.now();
+      const lastView = recentViews[viewKey];
       
-      const videos = loadDB();
-      const idx = videos.findIndex(v => v.id === id);
-      if (idx !== -1) {
-        const lastView = recentViews[viewKey];
-        // Only allow increment if not viewed by this IP in the last 1 hour
-        if (!lastView || (now - lastView > 3600000)) {
-          videos[idx].views += 1;
-          saveDB(videos);
+      let finalViews = 0;
+      const isEligible = !lastView || (now - lastView > 3600000);
+      
+      if (mongoDb) {
+        if (isEligible) {
+          const doc = await mongoDb.collection('videos').findOneAndUpdate(
+            { _id: id },
+            { $inc: { views: 1 } },
+            { returnDocument: 'after' }
+          );
+          finalViews = doc ? doc.views : 0;
           recentViews[viewKey] = now;
-          console.log(`[views] Registered real view for ${id} from IP ${clientIp}`);
         } else {
-          console.log(`[views] Blocked duplicate view attempt for ${id} from IP ${clientIp}`);
+          const doc = await mongoDb.collection('videos').findOne({ _id: id });
+          finalViews = doc ? doc.views : 0;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ status: 'ok', views: videos[idx].views }));
+      } else {
+        const videos = loadDB();
+        const idx = videos.findIndex(v => v.id === id);
+        if (idx !== -1) {
+          if (isEligible) {
+            videos[idx].views += 1;
+            saveDB(videos);
+            recentViews[viewKey] = now;
+          }
+          finalViews = videos[idx].views;
+        }
       }
+      
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ status: 'ok', views: finalViews }));
     }
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'Video not found' }));
@@ -973,7 +1161,7 @@ const server = http.createServer(async (req, res) => {
     return res.end('Refresh started');
   }
   
-  // Serve SPA shell for all pages (including fallbacks like /nimda and /watch/{id})
+  // Serve SPA shell
   const file = path.join(__dirname, 'index.html');
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
