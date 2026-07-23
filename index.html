@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dinotube</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-black: #000000;
+      --bg-surface: #0f0f0f;
+      --bg-hover: #222222;
+      --accent-green: #39e75f;
+      --accent-green-dim: rgba(57, 231, 95, 0.15);
+      --text-main: #ffffff;
+      --text-muted: #aaaaaa;
+      --border-color: #2a2a2a;
+    }
+
+    body {
+      background: var(--bg-black);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1.5rem;
+      background: var(--bg-black);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 1.25rem;
+      letter-spacing: -0.03em;
+      user-select: none;
+    }
+
+    .logo-accent {
+      color: var(--accent-green);
+    }
+
+    /* Buttons */
+    .btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      background: var(--bg-hover);
+      border-color: #444444;
+    }
+
+    .btn.primary {
+      background: var(--accent-green);
+      color: #000000;
+      border: none;
+      font-weight: 600;
+    }
+
+    .btn.primary:hover {
+      background: #2cd450;
+    }
+
+    /* Main Container layout */
+    main {
+      flex-grow: 1;
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    /* Page View Controls */
+    .view-container {
+      display: none;
+    }
+
+    .view-container.active {
+      display: block;
+    }
+
+    /* --- HOME VIEW --- */
+    .home-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 1.5rem;
+    }
+
+    .tabs-bar {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .tab-button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.75rem 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .tab-button:hover {
+      color: var(--text-main);
+    }
+
+    .tab-button.active {
+      color: var(--accent-green);
+    }
+
+    .tab-button.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent-green);
+    }
+
+    /* Grid layout (YouTube home style) */
+    .video-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (min-width: 480px) {
+      .video-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 768px) {
+      .video-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (min-width: 1100px) {
+      .video-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    /* Video Card */
+    .video-card {
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .card-thumbnail {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: var(--bg-surface);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: border-color 0.2s ease;
+    }
+
+    .video-card:hover .card-thumbnail {
+      border-color: var(--accent-green);
+    }
+
+    .thumbnail-placeholder {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #333333;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      user-select: none;
+    }
+
+    .thumbnail-duration {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0, 0, 0, 0.85);
+      color: #ffffff;
+      padding: 2px 5px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      border-radius: 4px;
+      z-index: 5;
+      letter-spacing: 0.02em;
+    }
+
+    .card-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0 0.25rem;
+    }
+
+    .card-title {
+      font-size: 0.9rem;
+      font-weight: 500;
+      line-height: 1.35;
+      color: var(--text-main);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .card-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* --- WATCH VIEW --- */
+    .watch-layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (min-width: 1000px) {
+      .watch-layout {
+        grid-template-columns: 2.8fr 1.2fr;
+        align-items: start;
+      }
+    }
+
+    .watch-main {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .back-btn-container {
+      margin-bottom: 0.5rem;
+    }
+
+    .watch-player-card {
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+    }
+
+    /* Player Overlays */
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-black);
+      z-index: 10;
+      transition: opacity 0.4s ease;
+    }
+
+    .loading-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255, 255, 255, 0.05);
+      border-top-color: var(--accent-green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .error-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 10;
+      gap: 12px;
+    }
+
+    .error-overlay.visible { display: flex; }
+
+    /* Video Info Details */
+    .watch-details {
+      padding: 0.5rem 0.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+
+    .watch-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      line-height: 1.3;
+      color: var(--text-main);
+    }
+
+    .watch-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .watch-description-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1rem;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #dddddd;
+      white-space: pre-wrap;
+    }
+
+    /* Sidebar / Watch Related Column */
+    .watch-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .sidebar-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* --- ADMIN VIEW --- */
+    .admin-layout {
+      width: 100%;
+      margin: 1rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .admin-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      width: 100%;
+    }
+
+    .admin-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .admin-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .admin-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .form-group label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .form-group input, .form-group textarea {
+      background: var(--bg-black);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 0.65rem 0.8rem;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .form-group input:focus, .form-group textarea:focus {
+      border-color: var(--accent-green);
+    }
+
+    .admin-form-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+
+    /* Video Catalog List for Admin */
+    .admin-list-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+    }
+
+    .admin-list-table th, .admin-list-table td {
+      border-bottom: 1px solid var(--border-color);
+      padding: 0.75rem 1rem;
+      text-align: left;
+    }
+
+    .admin-list-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Modals styling */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 480px;
+      overflow: hidden;
+      animation: modal-enter 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes modal-enter {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .modal-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .close-modal {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.4rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .close-modal:hover { color: var(--text-main); }
+
+    .modal-body {
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .modal-footer {
+      padding: 0.75rem 1.25rem;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .form-status {
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-right: auto;
+      align-self: center;
+    }
+
+    .form-status.loading { color: #eab308; }
+    .form-status.success { color: var(--accent-green); }
+    .form-status.error { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="logo-container" onclick="navigateHome()">
+      <span>Dino<span class="logo-accent">tube</span></span>
+    </div>
+  </header>
+
+  <!-- Main Area -->
+  <main>
+    <!-- 1. HOME VIEW (YouTube Grid Style) -->
+    <div class="view-container active" id="homeView">
+      <div class="home-header">
+        <div class="tabs-bar">
+          <button class="tab-button active" id="tabTop" onclick="switchTab('top')">Top Videos</button>
+          <button class="tab-button" id="tabNew" onclick="switchTab('new')">New Videos</button>
+        </div>
+      </div>
+      <div class="video-grid" id="catalogGrid">
+        <!-- Injected dynamically -->
+      </div>
+    </div>
+
+    <!-- 2. WATCH VIEW (Theater / Focus Mode) -->
+    <div class="view-container" id="watchView">
+      <div class="back-btn-container">
+        <button class="btn" onclick="navigateHome()">← Back to home</button>
+      </div>
+      <div class="watch-layout">
+        <div class="watch-main">
+          <div class="watch-player-card">
+            <div class="video-wrap">
+              <video id="player" controls preload="metadata" playsinline></video>
+
+              <!-- Loading overlay -->
+              <div class="loading-overlay" id="loadingOverlay">
+                <div class="spinner"></div>
+                <div class="loading-text" id="loadingText">Hold on…</div>
+              </div>
+
+              <!-- Error overlay -->
+              <div class="error-overlay" id="errorOverlay">
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">Connection lost</div>
+                <button class="btn" id="retryBtn">Retry</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="watch-details">
+            <h1 class="watch-title" id="watchTitle">Video Title</h1>
+            
+            <div class="watch-meta-row" style="margin-bottom: 0.5rem;">
+              <span id="watchViews">0 views</span>
+              <span>•</span>
+              <span id="watchDate">Date</span>
+            </div>
+
+            <!-- Stars Rating & Report Row -->
+            <div class="watch-actions-row" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 1rem; gap: 1rem;">
+              <div class="rating-container" style="display: flex; align-items: center; gap: 0.8rem;">
+                <span style="font-size: 0.85rem; color: var(--text-muted);">Rate:</span>
+                <div class="stars-selector" id="starsSelector" style="display: flex; gap: 0.2rem; cursor: pointer;">
+                  <span class="star-item" data-value="1" style="font-size: 1.4rem; color: #444444; transition: color 0.15s ease;">★</span>
+                  <span class="star-item" data-value="2" style="font-size: 1.4rem; color: #444444; transition: color 0.15s ease;">★</span>
+                  <span class="star-item" data-value="3" style="font-size: 1.4rem; color: #444444; transition: color 0.15s ease;">★</span>
+                  <span class="star-item" data-value="4" style="font-size: 1.4rem; color: #444444; transition: color 0.15s ease;">★</span>
+                  <span class="star-item" data-value="5" style="font-size: 1.4rem; color: #444444; transition: color 0.15s ease;">★</span>
+                </div>
+                <span id="averageRatingText" style="font-size: 0.85rem; font-weight: 600; color: #eab308;">★ 0.0 (0 ratings)</span>
+              </div>
+              
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <button class="btn" id="reportBtn" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.25); font-size: 0.8rem; padding: 0.4rem 0.8rem;">Report Not Working</button>
+                <span id="reportStatus" style="font-size: 0.75rem; font-weight: 500;"></span>
+              </div>
+            </div>
+
+            <div class="watch-description-box" id="watchDesc">Description</div>
+          </div>
+        </div>
+
+        <div class="watch-sidebar">
+          <h3 class="sidebar-title">More Videos</h3>
+          <div class="sidebar-grid" id="sidebarGrid">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. ADMIN VIEW (/nimda) -->
+    <div class="view-container" id="adminView">
+      <div class="admin-layout">
+        <!-- Login Card -->
+        <div class="admin-card" id="adminLoginCard" style="max-width: 480px; margin: 2rem auto;">
+          <div class="admin-header-row">
+            <h2 class="admin-title">Admin Access Required</h2>
+          </div>
+          <div class="admin-form">
+            <div class="form-group">
+              <label for="adminPasswordInput">Password</label>
+              <input type="password" id="adminPasswordInput" placeholder="Enter admin password" />
+            </div>
+            <div style="text-align: right; margin-top: 0.5rem;">
+              <span class="form-status" id="loginStatus" style="margin-right: 1rem;"></span>
+              <button class="btn primary" id="loginBtn">Log In</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Catalog Admin Panel -->
+        <div class="admin-card" id="adminPanelCard" style="display: none;">
+          <div class="admin-header-row">
+            <h2 class="admin-title">Admin Catalog Dashboard</h2>
+            <button class="btn" id="logoutBtn">Log Out</button>
+          </div>
+          
+          <h3 style="font-size: 1rem; margin-bottom: 1rem;">Add New Video</h3>
+          <div class="admin-form">
+            <div class="form-group">
+              <label for="urlOrId">GoFile Link or Content ID</label>
+              <input type="text" id="urlOrId" placeholder="Paste link or ID here" />
+            </div>
+            <div class="form-group">
+              <label for="videoTitle">Title (Optional)</label>
+              <input type="text" id="videoTitle" placeholder="Custom video title" />
+            </div>
+            <div class="form-group">
+              <label for="videoDesc">Description (Optional)</label>
+              <textarea id="videoDesc" rows="3" placeholder="Short description of the video"></textarea>
+            </div>
+            <div class="admin-form-footer">
+              <span class="form-status" id="formStatus"></span>
+              <button class="btn primary" id="submitVideoBtn">Add Video</button>
+            </div>
+          </div>
+
+          <!-- Separate Reported Videos Section -->
+          <div id="reportedVideosSection" style="display: none; margin-top: 3rem; border-top: 1px solid var(--border-color); padding-top: 2rem;">
+            <h3 style="font-size: 1rem; color: #ef4444; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+              ⚠️ Reported Videos (Not Working)
+            </h3>
+            <div style="overflow-x: auto; background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.15); border-radius: 8px; margin-bottom: 2rem;">
+              <table class="admin-list-table">
+                <thead>
+                  <tr style="background: rgba(239, 68, 68, 0.05);">
+                    <th>Title</th>
+                    <th>Content ID</th>
+                    <th>Views</th>
+                    <th>Report Count</th>
+                    <th style="text-align: right; width: 220px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminReportedTableBody">
+                  <!-- Injected dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <h3 style="font-size: 1rem; margin-top: 2.5rem; margin-bottom: 1rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">Current Catalog Listing</h3>
+          <div style="overflow-x: auto;">
+            <table class="admin-list-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Content ID</th>
+                  <th>Views</th>
+                  <th>Rating</th>
+                  <th>Date Added</th>
+                  <th style="text-align: right; width: 160px;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminCatalogTableBody">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Edit Details & Custom Thumbnail Modal -->
+  <div class="modal-overlay" id="editModalOverlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Video Details</h3>
+        <button class="close-modal" id="closeEditModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="editVideoTitle">Title</label>
+          <input type="text" id="editVideoTitle" placeholder="Video Title" />
+        </div>
+        <div class="form-group">
+          <label for="editVideoDesc">Description</label>
+          <textarea id="editVideoDesc" rows="3" placeholder="Video description"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="editCustomThumbnail">Custom Thumbnail (Optional)</label>
+          <input type="file" id="editCustomThumbnail" accept="image/*" />
+          <span style="font-size: 0.72rem; color: var(--text-muted);">Leave empty to preserve existing thumbnail.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span class="form-status" id="editFormStatus"></span>
+        <button class="btn" id="cancelEditModal">Cancel</button>
+        <button class="btn primary" id="saveEditBtn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const player        = document.getElementById('player');
+    const loadingOvl    = document.getElementById('loadingOverlay');
+    const errorOvl      = document.getElementById('errorOverlay');
+    const loadingText   = document.getElementById('loadingText');
+    const retryBtn      = document.getElementById('retryBtn');
+    
+    const homeView      = document.getElementById('homeView');
+    const watchView     = document.getElementById('watchView');
+    const adminView     = document.getElementById('adminView');
+    
+    const catalogGrid   = document.getElementById('catalogGrid');
+    const sidebarGrid   = document.getElementById('sidebarGrid');
+    
+    const watchTitle    = document.getElementById('watchTitle');
+    const watchViews    = document.getElementById('watchViews');
+    const watchDate     = document.getElementById('watchDate');
+    const watchDesc     = document.getElementById('watchDesc');
+    
+    const tabTop        = document.getElementById('tabTop');
+    const tabNew        = document.getElementById('tabNew');
+    
+    // Rating / Report refs
+    const starsSelector      = document.getElementById('starsSelector');
+    const averageRatingText  = document.getElementById('averageRatingText');
+    const reportBtn          = document.getElementById('reportBtn');
+    const reportStatus       = document.getElementById('reportStatus');
+    
+    // Admin refs
+    const adminLoginCard = document.getElementById('adminLoginCard');
+    const adminPanelCard = document.getElementById('adminPanelCard');
+    const loginStatus    = document.getElementById('loginStatus');
+    const loginBtn       = document.getElementById('loginBtn');
+    const logoutBtn      = document.getElementById('logoutBtn');
+    const inputPass      = document.getElementById('adminPasswordInput');
+    
+    const inputUrl      = document.getElementById('urlOrId');
+    const inputTitle    = document.getElementById('videoTitle');
+    const inputDesc     = document.getElementById('videoDesc');
+    const submitBtn     = document.getElementById('submitVideoBtn');
+    const formStatus    = document.getElementById('formStatus');
+    const tableBody     = document.getElementById('adminCatalogTableBody');
+    
+    // Reported panel refs
+    const reportedSection = document.getElementById('reportedVideosSection');
+    const reportedTableBody = document.getElementById('adminReportedTableBody');
+
+    // Edit Modal refs
+    const editModalOverlay    = document.getElementById('editModalOverlay');
+    const editVideoTitle      = document.getElementById('editVideoTitle');
+    const editVideoDesc       = document.getElementById('editVideoDesc');
+    const editCustomThumbnail = document.getElementById('editCustomThumbnail');
+    const saveEditBtn         = document.getElementById('saveEditBtn');
+    const editFormStatus      = document.getElementById('editFormStatus');
+    const closeEditModal      = document.getElementById('closeEditModal');
+    const cancelEditModal     = document.getElementById('cancelEditModal');
+
+    let currentSort = 'top';
+    let activeVideoId = null;
+    let pollInterval = null;
+    let catalogCache = [];
+    let activeVideoHasThumbnail = false;
+    let editingActiveId = null;
+
+    /* Video Duration Formatter helper (converts seconds to M:SS or H:MM:SS) */
+    function formatDuration(sec) {
+      if (!sec || isNaN(sec) || sec <= 0) return '';
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = Math.floor(sec % 60);
+      const sStr = s < 10 ? '0' + s : s;
+      if (h > 0) {
+        const mStr = m < 10 ? '0' + m : m;
+        return `${h}:${mStr}:${sStr}`;
+      }
+      return `${m}:${sStr}`;
+    }
+
+    /* Views formatter */
+    function formatViews(count) {
+      if (count === 1) return '1 view';
+      return count.toLocaleString() + ' views';
+    }
+
+    /* Date formatter */
+    function formatDate(timestamp) {
+      if (!timestamp) return '';
+      const d = new Date(timestamp);
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    /* Switch tabs */
+    function switchTab(sortType) {
+      currentSort = sortType;
+      if (sortType === 'top') {
+        tabTop.classList.add('active');
+        tabNew.classList.remove('active');
+      } else {
+        tabNew.classList.add('active');
+        tabTop.classList.remove('active');
+      }
+      loadCatalog();
+    }
+
+    /* Router Navigator push state helpers */
+    function navigateHome() {
+      history.pushState(null, '', '/');
+      showHomeView();
+    }
+
+    function navigateWatch(contentId) {
+      history.pushState(null, '', `/watch/${contentId}`);
+    }
+
+    /* Router Check on Load & Popstate events */
+    function checkRouting() {
+      const path = window.location.pathname;
+      if (path === '/nimda' || path === '/nimda/') {
+        showAdminView();
+      } else if (path.startsWith('/watch/')) {
+        const parts = path.split('/');
+        const contentId = parts[2];
+        if (contentId) {
+          loadCatalog().then(() => {
+            const vid = catalogCache.find(v => v.id === contentId);
+            if (vid) {
+              selectVideo(vid, false);
+            } else {
+              navigateHome();
+            }
+          });
+        } else {
+          navigateHome();
+        }
+      } else {
+        showHomeView();
+      }
+    }
+
+    window.addEventListener('popstate', checkRouting);
+
+    /* Show home grid view */
+    function showHomeView() {
+      player.pause();
+      player.removeAttribute('src');
+      
+      watchView.classList.remove('active');
+      adminView.classList.remove('active');
+      homeView.classList.add('active');
+      
+      if (pollInterval) clearInterval(pollInterval);
+      loadCatalog();
+    }
+
+    /* Show watch view details */
+    function showWatchView() {
+      homeView.classList.remove('active');
+      adminView.classList.remove('active');
+      watchView.classList.add('active');
+      window.scrollTo(0, 0);
+    }
+
+    /* Show Admin dashboard view */
+    function showAdminView() {
+      player.pause();
+      player.removeAttribute('src');
+      
+      homeView.classList.remove('active');
+      watchView.classList.remove('active');
+      adminView.classList.add('active');
+      
+      if (pollInterval) clearInterval(pollInterval);
+      
+      // Check auth status
+      const savedPass = localStorage.getItem('adminPassword');
+      if (savedPass) {
+        unlockAdminPanel(savedPass);
+      } else {
+        adminPanelCard.style.display = 'none';
+        adminLoginCard.style.display = 'block';
+      }
+    }
+
+    /* Fetch videos and render home grid */
+    async function loadCatalog() {
+      try {
+        const res = await fetch(`/api/videos?sort=${currentSort}`);
+        catalogCache = await res.json();
+        
+        catalogGrid.innerHTML = '';
+        if (catalogCache.length === 0) {
+          catalogGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 3rem; color: var(--text-muted); font-size: 0.9rem;">No videos available.</div>`;
+          return;
+        }
+
+        catalogCache.forEach((vid, index) => {
+          const card = document.createElement('div');
+          card.className = 'video-card';
+          card.onclick = () => selectVideo(vid);
+
+          const hint = vid.title.substring(0, 10);
+          const durationBadge = vid.duration > 0 
+            ? `<span class="thumbnail-duration">${formatDuration(vid.duration)}</span>`
+            : '';
+
+          card.innerHTML = `
+            <div class="card-thumbnail" style="background: linear-gradient(${135 + index * 40}deg, #100e2b, #2d0b38)">
+              <img src="/thumbnails/${vid.id}.jpg?t=${vid.createdAt}" 
+                   style="width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px;" 
+                   onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+              <span class="thumbnail-placeholder" style="display: none;">${hint}…</span>
+              ${durationBadge}
+            </div>
+            <div class="card-info">
+              <h3 class="card-title">${vid.title}</h3>
+              <span class="card-meta">${formatViews(vid.views)} • ${formatDate(vid.createdAt)}</span>
+            </div>
+          `;
+          catalogGrid.appendChild(card);
+        });
+      } catch (err) {
+        console.error('Error loading video list:', err);
+      }
+    }
+
+    /* Render Watch Related Sidebar list */
+    function renderSidebar(currentId) {
+      sidebarGrid.innerHTML = '';
+      const related = catalogCache.filter(v => v.id !== currentId);
+      
+      if (related.length === 0) {
+        sidebarGrid.innerHTML = `<div style="color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 1rem;">No other videos.</div>`;
+        return;
+      }
+
+      related.forEach((vid, index) => {
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.onclick = () => selectVideo(vid);
+        
+        const hint = vid.title.substring(0, 10);
+        const durationBadge = vid.duration > 0 
+          ? `<span class="thumbnail-duration">${formatDuration(vid.duration)}</span>`
+          : '';
+
+        card.innerHTML = `
+          <div class="card-thumbnail" style="background: linear-gradient(${135 + index * 40}deg, #100e2b, #2d0b38)">
+            <img src="/thumbnails/${vid.id}.jpg?t=${vid.createdAt}" 
+                 style="width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px;" 
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+            <span class="thumbnail-placeholder" style="display: none;">${hint}…</span>
+            ${durationBadge}
+          </div>
+          <div class="card-info">
+            <h3 class="card-title" style="font-size: 0.85rem;">${vid.title}</h3>
+            <span class="card-meta">${formatViews(vid.views)}</span>
+          </div>
+        `;
+        sidebarGrid.appendChild(card);
+      });
+    }
+
+    /* Increment backend view counter */
+    async function incrementView(videoId) {
+      try {
+        const res = await fetch('/api/videos/view', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: videoId })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+          watchViews.textContent = formatViews(data.views);
+        }
+      } catch (err) {
+        console.error('Failed to register view:', err);
+      }
+    }
+
+    /* Auto healing listener to save duration on loadedmetadata event */
+    function registerDurationMetadataListener(vid) {
+      const saveDuration = async () => {
+        const loadedDuration = player.duration;
+        player.removeEventListener('loadedmetadata', saveDuration);
+        
+        if (loadedDuration && !isNaN(loadedDuration) && loadedDuration > 0) {
+          // Update local catalogCache
+          vid.duration = loadedDuration;
+          try {
+            await fetch('/api/videos/duration', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: vid.id, duration: loadedDuration })
+            });
+            console.log('[duration] Dynamic duration saved:', loadedDuration);
+          } catch (err) {
+            console.error('[duration] Failed to save duration:', err);
+          }
+        }
+      };
+      
+      if (!vid.duration || vid.duration <= 0) {
+        player.addEventListener('loadedmetadata', saveDuration);
+      }
+    }
+
+    /* Select and play a video */
+    async function selectVideo(vid, shouldPushState = true) {
+      activeVideoId = vid.id;
+      showWatchView();
+      
+      if (shouldPushState) {
+        navigateWatch(vid.id);
+      }
+      
+      // Stop current playback
+      player.pause();
+      player.removeAttribute('src');
+
+      // Update Watch page metadata
+      watchTitle.textContent = vid.title;
+      watchViews.textContent = formatViews(vid.views);
+      watchDate.textContent = formatDate(vid.createdAt);
+      watchDesc.textContent = vid.description || 'No description provided.';
+
+      // Reset rating & report labels
+      resetRatingUI(vid.rating || 0.0, vid.ratingCount || 0);
+      reportStatus.textContent = '';
+
+      renderSidebar(vid.id);
+
+      // Trigger view counting
+      incrementView(vid.id);
+
+      // Show loader
+      errorOvl.classList.remove('visible');
+      loadingOvl.classList.remove('hidden');
+      loadingText.textContent = 'Hold on…';
+
+      // Auto-healing duration listener
+      registerDurationMetadataListener(vid);
+
+      // Poll server status
+      await waitForReady(vid.id);
+
+      // Load and Play
+      player.src = `/video?c=${vid.id}&t=${Date.now()}`;
+      player.load();
+
+      player.addEventListener('canplay', () => {
+        loadingOvl.classList.add('hidden');
+      }, { once: true });
+
+      // Auto-extract thumbnail frame if not exists
+      if (!activeVideoHasThumbnail) {
+        setupAutoThumbnailExtractor(vid.id);
+      }
+    }
+
+    /* Auto capture frame during playback (fallback) */
+    function setupAutoThumbnailExtractor(contentId) {
+      let thumbnailCaptured = false;
+      const captureThumb = async () => {
+        if (thumbnailCaptured) return;
+        if (player.currentTime >= 0.5) {
+          thumbnailCaptured = true;
+          player.removeEventListener('timeupdate', captureThumb);
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = player.videoWidth || 640;
+            canvas.height = player.videoHeight || 360;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(player, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            
+            const res = await fetch('/api/videos/thumbnail/auto', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                id: contentId, 
+                image: dataUrl,
+                duration: player.duration // Include duration parameter
+              })
+            });
+            const info = await res.json();
+            if (info.status === 'ok') {
+              console.log('[auto-thumbnail] Successfully saved first frame thumbnail and duration');
+            }
+          } catch (err) {
+            console.error('[auto-thumbnail] Auto-capture failed:', err);
+          }
+        }
+      };
+      player.addEventListener('timeupdate', captureThumb);
+    }
+
+    /* Wait for status ready */
+    async function waitForReady(contentId) {
+      if (pollInterval) clearInterval(pollInterval);
+      
+      return new Promise((resolve) => {
+        pollInterval = setInterval(async () => {
+          try {
+            const res  = await fetch(`/status?c=${contentId}`);
+            const info = await res.json();
+
+            if (info.ready) {
+              clearInterval(pollInterval);
+              activeVideoHasThumbnail = info.hasThumbnail;
+              resolve(true);
+              return;
+            }
+
+            loadingText.textContent = 'Hold on…';
+          } catch {
+            loadingText.textContent = 'Hold on…';
+          }
+        }, 1500);
+      });
+    }
+
+    /* Video player stream errors */
+    player.addEventListener('error', () => {
+      if (!player.src || player.src === window.location.href) return;
+      if (pollInterval) clearInterval(pollInterval);
+      errorOvl.classList.add('visible');
+    });
+
+    /* Retry stream connection */
+    retryBtn.addEventListener('click', async () => {
+      errorOvl.classList.remove('visible');
+      loadingOvl.classList.remove('hidden');
+      loadingText.textContent = 'Hold on…';
+
+      await fetch(`/refresh?c=${activeVideoId}`);
+      await waitForReady(activeVideoId);
+      player.src = `/video?c=${activeVideoId}&t=${Date.now()}`;
+      player.load();
+    });
+
+    /* Star Rating Display Reset */
+    function resetRatingUI(avg, count) {
+      averageRatingText.textContent = `★ ${avg.toFixed(1)} (${count} rating${count === 1 ? '' : 's'})`;
+      
+      const stars = Array.from(starsSelector.querySelectorAll('.star-item'));
+      stars.forEach((star, idx) => {
+        if (idx < Math.round(avg)) {
+          star.style.color = '#eab308'; // gold
+        } else {
+          star.style.color = '#444444'; // dark grey
+        }
+      });
+    }
+
+    /* Star Rating Interactions */
+    starsSelector.addEventListener('click', async (e) => {
+      const star = e.target.closest('.star-item');
+      if (!star || !activeVideoId) return;
+      
+      const ratingVal = parseInt(star.getAttribute('data-value'));
+      
+      try {
+        const res = await fetch('/api/videos/rate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: activeVideoId, rating: ratingVal })
+        });
+        const data = await res.json();
+        
+        if (data.status === 'ok') {
+          const vid = catalogCache.find(v => v.id === activeVideoId);
+          if (vid) {
+            vid.rating = data.rating;
+            vid.ratingCount = data.ratingCount;
+          }
+          resetRatingUI(data.rating, data.ratingCount);
+        }
+      } catch (err) {
+        console.error('Failed to submit star rating:', err);
+      }
+    });
+
+    /* Star Hover Micro-animations */
+    starsSelector.addEventListener('mouseover', (e) => {
+      const star = e.target.closest('.star-item');
+      if (!star) return;
+      
+      const val = parseInt(star.getAttribute('data-value'));
+      const stars = Array.from(starsSelector.querySelectorAll('.star-item'));
+      
+      stars.forEach((s, idx) => {
+        if (idx < val) {
+          s.style.color = '#facc15'; // bright gold
+        } else {
+          s.style.color = '#444444';
+        }
+      });
+    });
+
+    starsSelector.addEventListener('mouseleave', () => {
+      const activeVideo = catalogCache.find(v => v.id === activeVideoId);
+      if (activeVideo) {
+        resetRatingUI(activeVideo.rating || 0.0, activeVideo.ratingCount || 0);
+      }
+    });
+
+    /* Report Not Working Interaction */
+    reportBtn.addEventListener('click', async () => {
+      if (!activeVideoId) return;
+      
+      reportStatus.style.color = 'var(--text-muted)';
+      reportStatus.textContent = 'Submitting report…';
+      
+      try {
+        const res = await fetch('/api/videos/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: activeVideoId })
+        });
+        const data = await res.json();
+        
+        if (data.status === 'ok') {
+          reportStatus.style.color = 'var(--accent-green)';
+          reportStatus.textContent = 'Report sent to admin!';
+        } else {
+          throw new Error();
+        }
+      } catch {
+        reportStatus.style.color = '#ef4444';
+        reportStatus.textContent = 'Failed to submit report.';
+      }
+    });
+
+    /* Admin Authentication Controls (Fast Verification via /api/login) */
+    loginBtn.addEventListener('click', async () => {
+      const pass = inputPass.value.trim();
+      loginStatus.className = 'form-status loading';
+      loginStatus.textContent = 'Verifying…';
+      
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'X-Admin-Password': pass, 'Content-Type': 'application/json' }
+        });
+        const result = await res.json();
+        
+        if (res.status === 401) {
+          throw new Error('Invalid admin password');
+        }
+        
+        localStorage.setItem('adminPassword', pass);
+        unlockAdminPanel(pass);
+      } catch (err) {
+        loginStatus.className = 'form-status error';
+        loginStatus.textContent = err.message;
+      }
+    });
+
+    inputPass.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') loginBtn.click();
+    });
+
+    function unlockAdminPanel(password) {
+      adminLoginCard.style.display = 'none';
+      adminPanelCard.style.display = 'block';
+      loadAdminCatalogTable();
+    }
+
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('adminPassword');
+      adminPanelCard.style.display = 'none';
+      adminLoginCard.style.display = 'block';
+      inputPass.value = '';
+      loginStatus.textContent = '';
+    });
+
+    /* Load admin videos dashboard table */
+    async function loadAdminCatalogTable() {
+      try {
+        const res = await fetch('/api/videos?sort=new');
+        catalogCache = await res.json();
+        
+        // 1. Render main catalog listing table
+        tableBody.innerHTML = '';
+        if (catalogCache.length === 0) {
+          tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No videos inside database catalog.</td></tr>`;
+        } else {
+          catalogCache.forEach(v => {
+            const avgRating = v.rating || 0.0;
+            const ratingText = avgRating > 0 ? `★ ${avgRating.toFixed(1)} (${v.ratingCount || 0})` : 'No ratings';
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td style="font-weight: 500;">${v.title}</td>
+              <td><code>${v.id}</code></td>
+              <td>${v.views}</td>
+              <td>${ratingText}</td>
+              <td>${formatDate(v.createdAt)}</td>
+              <td style="text-align: right; white-space: nowrap;">
+                <button class="btn" style="color: var(--accent-green); border-color: rgba(57, 231, 95, 0.2); padding: 0.3rem 0.6rem; font-size: 0.75rem; margin-right: 0.25rem;" onclick="openEditModal('${v.id}')">Edit</button>
+                <button class="btn" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.2); padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="deleteVideo('${v.id}')">Delete</button>
+              </td>
+            `;
+            tableBody.appendChild(row);
+          });
+        }
+
+        // 2. Render reported videos separate section
+        const reportedVideos = catalogCache.filter(v => (v.reports || 0) > 0);
+        reportedTableBody.innerHTML = '';
+        
+        if (reportedVideos.length > 0) {
+          reportedSection.style.display = 'block';
+          reportedVideos.forEach(v => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td style="font-weight: 600; color: #ef4444;">${v.title}</td>
+              <td><code>${v.id}</code></td>
+              <td>${v.views}</td>
+              <td style="color: #ef4444; font-weight: 700;">${v.reports} reports</td>
+              <td style="text-align: right; white-space: nowrap;">
+                <button class="btn" style="color: var(--accent-green); border-color: rgba(57, 231, 95, 0.2); padding: 0.3rem 0.6rem; font-size: 0.75rem; margin-right: 0.25rem;" onclick="clearReports('${v.id}')">Mark Working / Completion</button>
+                <button class="btn" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.2); padding: 0.3rem 0.6rem; font-size: 0.75rem;" onclick="deleteVideo('${v.id}')">Delete</button>
+              </td>
+            `;
+            reportedTableBody.appendChild(row);
+          });
+        } else {
+          reportedSection.style.display = 'none';
+        }
+      } catch (err) {
+        console.error('Failed to load admin tables:', err);
+      }
+    }
+
+    /* Admin Clear Video Reports */
+    async function clearReports(videoId) {
+      const password = localStorage.getItem('adminPassword');
+      if (!password) {
+        alert('Authentication lost. Please log in again.');
+        logoutBtn.click();
+        return;
+      }
+      
+      try {
+        const res = await fetch('/api/videos/reports/clear', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Admin-Password': password
+          },
+          body: JSON.stringify({ id: videoId })
+        });
+        const data = await res.json();
+        
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to clear reports');
+        }
+        
+        loadAdminCatalogTable();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    /* Admin Delete Video */
+    async function deleteVideo(videoId) {
+      if (!confirm('Are you sure you want to remove this video from the database catalog?')) return;
+      
+      const password = localStorage.getItem('adminPassword');
+      if (!password) {
+        alert('Authentication lost. Please log in again.');
+        logoutBtn.click();
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/videos?id=${videoId}`, {
+          method: 'DELETE',
+          headers: { 'X-Admin-Password': password }
+        });
+        const data = await res.json();
+        
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Delete request failed');
+        }
+        
+        loadAdminCatalogTable();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    /* Edit Video Modal Controllers */
+    function openEditModal(videoId) {
+      const video = catalogCache.find(v => v.id === videoId);
+      if (!video) return;
+      
+      editingActiveId = videoId;
+      editVideoTitle.value = video.title;
+      editVideoDesc.value = video.description || '';
+      editCustomThumbnail.value = '';
+      
+      editFormStatus.className = 'form-status';
+      editFormStatus.textContent = '';
+      
+      editModalOverlay.classList.add('active');
+    }
+
+    function hideEditModal() {
+      editModalOverlay.classList.remove('active');
+      editingActiveId = null;
+    }
+
+    closeEditModal.addEventListener('click', hideEditModal);
+    cancelEditModal.addEventListener('click', hideEditModal);
+
+    /* Helper: Convert File to Base64 dataURL */
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    /* Save Video Edits */
+    saveEditBtn.addEventListener('click', async () => {
+      const password = localStorage.getItem('adminPassword');
+      if (!password) {
+        alert('Authentication lost. Please log in again.');
+        logoutBtn.click();
+        return;
+      }
+
+      editFormStatus.className = 'form-status loading';
+      editFormStatus.textContent = 'Saving changes…';
+      saveEditBtn.disabled = true;
+
+      try {
+        let base64Image = null;
+        if (editCustomThumbnail.files && editCustomThumbnail.files[0]) {
+          base64Image = await readFileAsBase64(editCustomThumbnail.files[0]);
+        }
+
+        const res = await fetch('/api/videos/edit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Password': password
+          },
+          body: JSON.stringify({
+            id: editingActiveId,
+            title: editVideoTitle.value.trim(),
+            description: editVideoDesc.value.trim(),
+            thumbnail: base64Image
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Edit failed');
+        }
+
+        editFormStatus.className = 'form-status success';
+        editFormStatus.textContent = 'Changes saved successfully!';
+        
+        setTimeout(() => {
+          hideEditModal();
+          saveEditBtn.disabled = false;
+          loadAdminCatalogTable();
+        }, 1000);
+      } catch (err) {
+        editFormStatus.className = 'form-status error';
+        editFormStatus.textContent = err.message;
+        saveEditBtn.disabled = false;
+      }
+    });
+
+    // Expose methods globally for inline HTML actions
+    window.deleteVideo = deleteVideo;
+    window.clearReports = clearReports;
+    window.openEditModal = openEditModal;
+
+    /* Parse Content ID */
+    function parseContentId(val) {
+      if (!val) return '';
+      const trimmed = val.trim();
+      const urlMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (urlMatch && urlMatch[1]) {
+        return urlMatch[1];
+      }
+      return trimmed;
+    }
+
+    /* Admin upload frame capture and save */
+    function captureAndUploadThumbnail(contentId, password) {
+      return new Promise((resolve) => {
+        const tempVideo = document.createElement('video');
+        tempVideo.src = `/video?c=${contentId}`;
+        tempVideo.crossOrigin = 'anonymous';
+        tempVideo.muted = true;
+        tempVideo.playsInline = true;
+
+        tempVideo.addEventListener('loadeddata', () => {
+          tempVideo.currentTime = 0.5;
+        });
+
+        tempVideo.addEventListener('seeked', async () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = tempVideo.videoWidth || 640;
+            canvas.height = tempVideo.videoHeight || 360;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(tempVideo, 0, 0, canvas.width, canvas.height);
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+            await fetch('/api/videos/thumbnail', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'X-Admin-Password': password
+              },
+              body: JSON.stringify({
+                id: contentId,
+                image: dataUrl,
+                duration: tempVideo.duration // Include duration parameter
+              })
+            });
+            console.log('[thumbnail] Admin upload frame capture completed');
+          } catch (err) {
+            console.error('[thumbnail] Admin frame upload failed:', err);
+          } finally {
+            tempVideo.pause();
+            tempVideo.src = '';
+            tempVideo.load();
+            resolve();
+          }
+        });
+
+        tempVideo.addEventListener('error', () => {
+          console.error('[thumbnail] Admin load frame error:', tempVideo.error);
+          resolve();
+        });
+
+        tempVideo.load();
+      });
+    }
+
+    /* Admin Submit Add Video */
+    submitBtn.addEventListener('click', async () => {
+      const password = localStorage.getItem('adminPassword');
+      const urlOrId = inputUrl.value.trim();
+      
+      if (!password) {
+        alert('Authentication lost. Please log in again.');
+        logoutBtn.click();
+        return;
+      }
+      if (!urlOrId) {
+        formStatus.className = 'form-status error';
+        formStatus.textContent = 'Link/ID is required';
+        return;
+      }
+
+      const contentId = parseContentId(urlOrId);
+
+      formStatus.className = 'form-status loading';
+      formStatus.textContent = 'Initializing GoFile link…';
+      submitBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/videos', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Admin-Password': password
+          },
+          body: JSON.stringify({
+            urlOrId: contentId,
+            title: inputTitle.value.trim(),
+            description: inputDesc.value.trim()
+          })
+        });
+
+        const result = await res.json();
+        if (!res.ok || result.error) {
+          throw new Error(result.error || 'Server error');
+        }
+
+        formStatus.textContent = 'Auto generating thumbnail frame…';
+        
+        // Auto capture first frame upon admin upload
+        await captureAndUploadThumbnail(contentId, password);
+
+        formStatus.className = 'form-status success';
+        formStatus.textContent = 'Video added and thumbnail generated!';
+        
+        inputUrl.value = '';
+        inputTitle.value = '';
+        inputDesc.value = '';
+        
+        setTimeout(() => {
+          formStatus.textContent = '';
+          submitBtn.disabled = false;
+          loadAdminCatalogTable();
+        }, 1200);
+      } catch (err) {
+        formStatus.className = 'form-status error';
+        formStatus.textContent = err.message;
+        submitBtn.disabled = false;
+      }
+    });
+
+    /* App start routing verification */
+    checkRouting();
+  </script>
+</body>
+</html>

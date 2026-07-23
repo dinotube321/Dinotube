@@ -1,0 +1,12 @@
+{
+  "name": "gofile-video-proxy",
+  "version": "1.0.0",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Proxy server for streaming GoFile videos"
+}
